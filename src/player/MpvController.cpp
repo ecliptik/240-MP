@@ -33,7 +33,7 @@ MpvController::MpvController(const QString &appRoot, const QString &dataRoot,
     m_videoProfile = detectVideoProfile();
     qInfo("[MpvController] video profile: %s",
           m_videoProfile == VideoProfile::Pi4       ? "Pi 4 — drm + drm-copy,v4l2m2m-copy"
-        : m_videoProfile == VideoProfile::Pi3       ? "Pi 3 — gpu/drm + v4l2m2m (zero-copy)"
+        : m_videoProfile == VideoProfile::Pi3       ? "Pi 1/2/3/Zero (VideoCore IV) — gpu/drm + v4l2m2m (zero-copy)"
         : m_videoProfile == VideoProfile::PiFullKms ? "Pi 5 (Full KMS) — drm + auto-safe"
                                                     : "generic");
 
@@ -629,7 +629,10 @@ MpvController::VideoProfile MpvController::detectVideoProfile() const {
     // The Raspberry Pi model string (e.g. "Raspberry Pi 4 Model B Rev 1.5") is
     // exposed NUL-terminated at /proc/device-tree/model. Pi 3 and Pi 4 both boot
     // Fake KMS but have different CPU budgets, so they get different decode paths;
-    // Pi 5 boots Full KMS and direct-renders with --vo=drm.
+    // Pi 5 boots Full KMS and direct-renders with --vo=drm. The Pi 1, Pi 2 and
+    // Zero share the Pi 3's VideoCore IV and its hardware decoder, with even less
+    // CPU, so they take the Pi 3's zero-copy path ("Raspberry Pi Model B Rev 2",
+    // "Raspberry Pi 2 Model B Rev 1.1", "Raspberry Pi Zero W Rev 1.1").
     QFile f("/proc/device-tree/model");
     if (f.open(QIODevice::ReadOnly)) {
         const QString model =
@@ -638,7 +641,8 @@ MpvController::VideoProfile MpvController::detectVideoProfile() const {
             return VideoProfile::PiFullKms;
         if (model.startsWith("Raspberry Pi 4"))
             return VideoProfile::Pi4;
-        if (model.startsWith("Raspberry Pi 3"))
+        if (model.startsWith("Raspberry Pi 3") || model.startsWith("Raspberry Pi 2")
+            || model.startsWith("Raspberry Pi Zero") || model.startsWith("Raspberry Pi Model"))
             return VideoProfile::Pi3;
     }
 #endif
@@ -670,7 +674,7 @@ void MpvController::appendVideoArgs(QStringList &args) const {
             // (--panscan) works because frames go through the normal scaler.
             args << "--vo=drm" << "--hwdec=drm-copy,v4l2m2m-copy";
         } else if (m_videoProfile == VideoProfile::Pi3) {
-            // Pi 3B/3B+: too weak for the copy + software-scale path above (it pegs
+            // Pi 3B/3B+ (and the VideoCore IV Pi 1/2/Zero): too weak for the copy + software-scale path above (it pegs
             // all four cores and gets choppy). Zero-copy v4l2m2m hands decoded frames
             // straight to a DRM overlay plane for the lowest possible CPU (~15%) with
             // smooth playback. The one trade-off: the overlay plane can't zoom/crop,
