@@ -67,8 +67,11 @@ else
 fi
 
 # System Qt6 QML modules (matches the installed launcher); only if present.
-if [ -d /usr/lib/aarch64-linux-gnu/qt6/qml ]; then
-    export QML2_IMPORT_PATH="${QML2_IMPORT_PATH:-/usr/lib/aarch64-linux-gnu/qt6/qml}"
-fi
+for d in /usr/lib/aarch64-linux-gnu/qt6/qml /usr/lib/arm-linux-gnueabihf/qt6/qml; do
+    if [ -d "$d" ]; then
+        export QML2_IMPORT_PATH="${QML2_IMPORT_PATH:-$d}"
+        break
+    fi
+done
 
 exec "$BIN" "$@"

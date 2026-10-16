@@ -19,16 +19,20 @@ const QString kDefaultFeedUrl =
     QStringLiteral("https://api.github.com/repos/anthonycaccese/240-mp/releases/latest");
 
 // Release asset this build looks for. On Linux the artifact depends on CPU arch:
-// arm64 (Raspberry Pi) ships a tarball the launcher swaps into /opt; x86_64
-// (SteamDeck / Intel/AMD desktop) ships a self-contained AppImage. Computed at
-// runtime because a single Linux binary could run on either arch.
+// arm64 (Raspberry Pi) and 32-bit arm (armhf: Pi 1, Pi 2, Zero) ship tarballs
+// the launcher swaps into /opt; x86_64 (SteamDeck / Intel/AMD desktop) ships a
+// self-contained AppImage. Computed at runtime because a single Linux binary
+// could run on either arch.
 QString assetSuffix() {
 #if defined(Q_OS_MAC)
     return QStringLiteral("-macOS-arm64.dmg");
 #elif defined(Q_OS_LINUX)
-    return QSysInfo::currentCpuArchitecture() == QStringLiteral("arm64")
-               ? QStringLiteral("-linux-arm64.tar.gz")
-               : QStringLiteral("-linux-x86_64.AppImage");
+    const QString arch = QSysInfo::currentCpuArchitecture();
+    if (arch == QStringLiteral("arm64"))
+        return QStringLiteral("-linux-arm64.tar.gz");
+    if (arch == QStringLiteral("arm"))
+        return QStringLiteral("-linux-armhf.tar.gz");
+    return QStringLiteral("-linux-x86_64.AppImage");
 #else
     return QString();
 #endif
@@ -243,7 +247,8 @@ void UpdateManager::handleReleaseInfo(const QByteArray &json) {
 
 #ifndef Q_OS_MAC
     const QString arch = QSysInfo::currentCpuArchitecture();
-    if (arch != QStringLiteral("arm64") && arch != QStringLiteral("x86_64")) {
+    if (arch != QStringLiteral("arm64") && arch != QStringLiteral("arm")
+        && arch != QStringLiteral("x86_64")) {
         setState(QStringLiteral("error"),
                  QStringLiteral("No update package for this architecture (%1).").arg(arch));
         return;

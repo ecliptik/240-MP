@@ -1,10 +1,16 @@
 #!/usr/bin/env bash
 # ──────────────────────────────────────────────────────────────────────────────
-# 240-MP installer for Raspberry Pi OS Trixie (arm64)
+# 240-MP installer for Raspberry Pi OS Trixie (arm64, or 32-bit armhf for the
+# Pi 1, Pi 2 and Zero)
 #
 # Usage:
 #   bash install.sh             # install latest release
 #   bash install.sh v1.2.0      # install a specific release tag
+#
+# Unattended install (no prompts), e.g. from a first-boot script:
+#   MP240_INSTALL_AUTOSTART=y MP240_INSTALL_USER=pi bash install.sh
+# MP240_TARBALL=/path/to/240-MP-<version>-linux-<arch>.tar.gz installs a local
+# build instead of downloading a release.
 # ──────────────────────────────────────────────────────────────────────────────
 set -euo pipefail
 
@@ -15,7 +21,9 @@ SYSTEMD_SERVICE="/etc/systemd/system/240mp.service"
 
 # ── Resolve version ────────────────────────────────────────────────────────────
 VERSION="${1:-latest}"
-if [ "$VERSION" = "latest" ]; then
+if [ -n "${MP240_TARBALL:-}" ]; then
+    VERSION="local"
+elif [ "$VERSION" = "latest" ]; then
     echo "Fetching latest release tag..."
     VERSION=$(curl -fsSL \
         "https://api.github.com/repos/${REPO}/releases/latest" \
@@ -23,15 +31,26 @@ if [ "$VERSION" = "latest" ]; then
 fi
 echo "Installing 240-MP ${VERSION}"
 
-TARBALL="240-MP-${VERSION}-linux-arm64.tar.gz"
-DOWNLOAD_URL="https://github.com/${REPO}/releases/download/${VERSION}/${TARBALL}"
-
 # ── Verify architecture ────────────────────────────────────────────────────────
+# The tarball name follows the Debian architecture: arm64 for a 64-bit OS, armhf
+# for 32-bit Raspberry Pi OS (the only choice on the ARMv6 Pi 1 and Zero).
 ARCH=$(uname -m)
-if [ "$ARCH" != "aarch64" ]; then
-    echo "Error: this installer is for arm64 (aarch64). Detected: $ARCH"
-    exit 1
-fi
+case "$ARCH" in
+    aarch64)        PKG_ARCH="arm64" ;;
+    armv6l|armv7l)  PKG_ARCH="armhf" ;;
+    *)
+        echo "Error: this installer is for arm64 (aarch64) or armhf (armv6l/armv7l). Detected: $ARCH"
+        exit 1
+        ;;
+esac
+# Where apt puts the Qt 6 QML modules (/usr/lib/<multiarch triplet>/qt6/qml).
+case "$PKG_ARCH" in
+    arm64) QML_DIR="/usr/lib/aarch64-linux-gnu/qt6/qml" ;;
+    armhf) QML_DIR="/usr/lib/arm-linux-gnueabihf/qt6/qml" ;;
+esac
+
+TARBALL="240-MP-${VERSION}-linux-${PKG_ARCH}.tar.gz"
+DOWNLOAD_URL="https://github.com/${REPO}/releases/download/${VERSION}/${TARBALL}"
 
 # ── Install runtime dependencies ──────────────────────────────────────────────
 echo "Installing runtime dependencies..."
@@ -62,20 +81,34 @@ sudo udevadm trigger /dev/tty0
 # Asked up front so the extract step can hand /opt/240mp to the user the app
 # will run as — the launcher applies in-app staged updates there without root.
 echo ""
-read -r -p "Install systemd autostart service? [y/N] " AUTOSTART_REPLY
+if [ -n "${MP240_INSTALL_AUTOSTART:-}" ]; then
+    AUTOSTART_REPLY="${MP240_INSTALL_AUTOSTART}"
+else
+    read -r -p "Install systemd autostart service? [y/N] " AUTOSTART_REPLY
+fi
 SERVICE_USER=""
 if [[ "${AUTOSTART_REPLY}" =~ ^[Yy]$ ]]; then
-    read -r -p "Run service as user [default: pi]: " SERVICE_USER
+    if [ -n "${MP240_INSTALL_USER:-}" ]; then
+        SERVICE_USER="${MP240_INSTALL_USER}"
+    else
+        read -r -p "Run service as user [default: pi]: " SERVICE_USER
+    fi
     SERVICE_USER="${SERVICE_USER:-pi}"
 fi
 OWNER_USER="${SERVICE_USER:-$USER}"
 
 # ── Download tarball ───────────────────────────────────────────────────────────
-echo "Downloading ${TARBALL}..."
 TMP_DIR=$(mktemp -d)
 trap 'rm -rf "$TMP_DIR"' EXIT
 
-curl -fsSL -o "${TMP_DIR}/${TARBALL}" "${DOWNLOAD_URL}"
+if [ -n "${MP240_TARBALL:-}" ]; then
+    TARBALL=$(basename "${MP240_TARBALL}")
+    echo "Using local ${MP240_TARBALL}..."
+    cp "${MP240_TARBALL}" "${TMP_DIR}/${TARBALL}"
+else
+    echo "Downloading ${TARBALL}..."
+    curl -fsSL -o "${TMP_DIR}/${TARBALL}" "${DOWNLOAD_URL}"
+fi
 
 # ── Extract to install directory ───────────────────────────────────────────────
 # Tarball structure: usr/local/bin/240mp + usr/local/share/240mp/...
@@ -183,7 +216,9 @@ else
 fi
 
 export QT_QPA_PLATFORM
-export QML2_IMPORT_PATH="/usr/lib/aarch64-linux-gnu/qt6/qml"
+for d in /usr/lib/aarch64-linux-gnu/qt6/qml /usr/lib/arm-linux-gnueabihf/qt6/qml; do
+    [ -d "$d" ] && { export QML2_IMPORT_PATH="$d"; break; }
+done
 
 exec "${INSTALL_DIR}/bin/240mp" "$@"
 LAUNCHER_SCRIPT
@@ -205,7 +240,7 @@ AmbientCapabilities=CAP_SYS_TTY_CONFIG
 Environment=QT_QPA_PLATFORM=eglfs
 Environment=QT_QPA_EGLFS_ALWAYS_SET_MODE=1
 Environment=QT_QPA_EGLFS_KMS_ATOMIC=1
-Environment=QML2_IMPORT_PATH=/usr/lib/aarch64-linux-gnu/qt6/qml
+Environment=QML2_IMPORT_PATH=${QML_DIR}
 Environment=MP240_AUTOSTART=1
 ExecStartPre=+-/usr/bin/systemctl stop 240mp-terminal.service
 ExecStart=${LAUNCHER}
