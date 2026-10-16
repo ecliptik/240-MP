@@ -199,6 +199,78 @@ jobs:
           if-no-files-found: error
 
   # ──────────────────────────────────────────────────────────────────────────────
+  # Linux armhf — 32-bit Raspberry Pi OS Trixie, for the Pi 1, Pi 2 and Zero
+  # (ARMv6 Pi 1/Zero can't run arm64). Built inside the Raspberry Pi OS Lite
+  # armhf image under QEMU user-mode emulation, so the compiler and Qt are
+  # Raspbian's armv6+VFPv2 builds: Debian's own armhf targets ARMv7 and its
+  # binaries crash on a Pi 1 / Zero.
+  # ──────────────────────────────────────────────────────────────────────────────
+  build-linux-armhf:
+    name: Linux armhf (32-bit)
+    runs-on: ubuntu-24.04
+    env:
+      RPIOS_IMG_URL: https://downloads.raspberrypi.com/raspios_lite_armhf/images/raspios_lite_armhf-2026-10-06/2026-10-06-raspios-trixie-armhf-lite.img.xz
+      # sha256 of the decompressed .img (Raspberry Pi Imager's extract_sha256)
+      RPIOS_IMG_SHA256: acf39427d33c997fc2bbc237cc48a30f3b00c9cd60b831d67fedc9e3205fa816
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4.2.2
+
+      - name: Install QEMU user-mode emulation
+        run: |
+          sudo rm -f /etc/apt/sources.list.d/microsoft-prod.* /etc/apt/sources.list.d/azure-cli.*
+          sudo apt-get update
+          sudo apt-get install -y qemu-user-static binfmt-support
+          test -e /proc/sys/fs/binfmt_misc/qemu-arm
+
+      - name: Prepare Raspberry Pi OS armhf root
+        run: |
+          curl -fsSL "$RPIOS_IMG_URL" | xz -dc > rpios.img
+          echo "$RPIOS_IMG_SHA256  rpios.img" | sha256sum -c
+          truncate -s +4G rpios.img
+          LOOP=$(sudo losetup -fP --show rpios.img)
+          sudo parted -s "$LOOP" resizepart 2 100%
+          sudo e2fsck -fy "${LOOP}p2" || true
+          sudo resize2fs "${LOOP}p2"
+          mkdir root
+          sudo mount "${LOOP}p2" root
+          for d in proc sys dev dev/pts; do sudo mount --bind /$d root/$d; done
+          sudo rm -f root/etc/resolv.conf
+          sudo cp /etc/resolv.conf root/etc/resolv.conf
+          sudo chroot root bash -c 'DEBIAN_FRONTEND=noninteractive apt-get update -qq &&
+            DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends \
+              build-essential cmake pkg-config \
+              qt6-base-dev qt6-declarative-dev qt6-svg-dev libqt6svg6 \
+              qml6-module-qtquick qml6-module-qtquick-controls qml6-module-qtquick-window \
+              libdrm-dev libssl-dev libsdl2-dev libpcsclite-dev'
+
+      - name: Build
+        run: |
+          sudo mkdir root/src
+          sudo cp -a "${GITHUB_WORKSPACE}/." root/src/
+          sudo chroot root bash -c 'cd /src &&
+            cmake -B build -DCMAKE_BUILD_TYPE=Release \
+              -DCMAKE_INSTALL_PREFIX=/src/install/usr/local \
+              -DAPP_VERSION="${{ github.ref_name }}" &&
+            cmake --build build --parallel "$(nproc)" &&
+            cmake --install build'
+          # Raspbian's toolchain targets ARMv6 + VFPv2; fail if anything newer slipped in.
+          readelf -A root/src/install/usr/local/bin/240mp | grep -q 'Tag_CPU_arch: v6'
+
+      - name: Create tarball
+        run: |
+          cd root/src/install
+          tar -czf "${GITHUB_WORKSPACE}/240-MP-${{ github.ref_name }}-linux-armhf.tar.gz" .
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: tarball-linux-armhf
+          path: "240-MP-*-linux-armhf.tar.gz"
+          if-no-files-found: error
+
+  # ──────────────────────────────────────────────────────────────────────────────
   # Linux x86_64 — self-contained AppImage for SteamDeck / Intel-AMD desktops.
   # Unlike the arm64 tarball (which relies on apt via install.sh), the AppImage
   # bundles Qt, SDL2 and mpv so it runs on immutable distros like SteamOS.
@@ -314,7 +386,7 @@ jobs:
   # ──────────────────────────────────────────────────────────────────────────────
   release:
     name: Publish Release
-    needs: [build-macos-arm64, build-linux-arm64, build-linux-x86_64]
+    needs: [build-macos-arm64, build-linux-arm64, build-linux-armhf, build-linux-x86_64]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -334,7 +406,8 @@ jobs:
       - name: Generate checksums
         run: |
           cd artifacts
-          sha256sum dmg-arm64/*.dmg tarball-linux-arm64/*.tar.gz appimage-linux-x86_64/*.AppImage \
+          sha256sum dmg-arm64/*.dmg tarball-linux-arm64/*.tar.gz tarball-linux-armhf/*.tar.gz \
+            appimage-linux-x86_64/*.AppImage \
             | sed 's|  .*/|  |' > SHA256SUMS
 
       - name: Publish
@@ -347,6 +420,7 @@ jobs:
           files: |
             artifacts/dmg-arm64/*.dmg
             artifacts/tarball-linux-arm64/*.tar.gz
+            artifacts/tarball-linux-armhf/*.tar.gz
             artifacts/appimage-linux-x86_64/*.AppImage
             artifacts/SHA256SUMS
             scripts/install.sh
@@ -354,6 +428,7 @@ jobs:
           body: |
             Install:
             - Raspberry Pi OS Trixie (arm64): Please follow [these instructions](INSTALL.md#on-a-raspberry-pi)
+            - Raspberry Pi OS Trixie (32-bit armhf, Pi 1 / Pi 2 / Zero): the same install script picks the armhf tarball. See [these instructions](INSTALL.md#raspberry-pi-1-pi-2-and-zero-32-bit)
             - macOS (Apple Silicon): Download the `.dmg`, open and move 240mp.app to your applications folder
             - Steam Deck / Linux (x86_64): Download `240-MP-linux-x86_64.AppImage`, make it executable (`chmod +x`), and run it. See [these instructions](INSTALL.md#on-a-steam-deck--linux-x86_64)
 

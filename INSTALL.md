@@ -198,6 +198,47 @@ However, if you already have Raspberry Pi OS set up and working for your TV then
 
 At this point you can type `240mp` at any time to start up the app.  And if you installed the autostart service then the next time you boot your Pi it will boot directly into 240-MP.
 
+### Raspberry Pi 1, Pi 2 and Zero (32-bit)
+
+The Pi 1, Pi 2 and Zero / Zero W can't run the 64-bit image, so these boards use **Raspberry Pi OS Lite (32-bit)** and the `linux-armhf` release tarball. The install script in step 5 picks the right tarball by itself.
+
+- Video decode works the same as on a Pi 3: these boards all have the VideoCore IV, which decodes H.264 up to 1080p in hardware, and 240-MP gives them the Pi 3's zero-copy decode path. VideoCore IV has no HEVC decoder, so for HEVC (and AV1/VP9) files choose a Transcode option in the Plex/Jellyfin/Emby module's Video Quality setting.
+- The CPU is much slower than a Pi 3 (a Pi 1 is one 700 MHz ARM11 core), so menus and first launch are slower. Playback isn't affected, because the GPU does the decoding.
+- In step 2, use this `config.txt` for composite out to a CRT (NTSC):
+
+    ```
+    auto_initramfs=1
+    disable_splash=1
+    disable_overscan=1
+    disable_fw_kms_setup=1
+    dtparam=audio=on
+    sdtv_mode=0      # 0 = NTSC, 2 = PAL
+    sdtv_aspect=1    # 1 = 4:3
+
+    [pi1]
+    dtoverlay=vc4-kms-v3d,cma-64,composite
+    gpu_mem=64
+
+    [pi2]
+    dtoverlay=vc4-kms-v3d,cma-128,composite
+    gpu_mem=64
+
+    [pi0]
+    dtoverlay=vc4-kms-v3d,cma-64,composite
+    gpu_mem=64
+
+    [all]
+    ```
+
+    Under KMS the TV standard comes from the kernel rather than `sdtv_mode`: add `vc4.tv_norm=NTSC` (or `PAL`) to the end of the single line in `cmdline.txt`.
+- **256 MB boards** (the Pi 1 Model B Rev 1 and Model A/A+): the firmware won't load `vc4-kms-v3d` below 512 MB ("Overlay 'vc4-kms-v3d' needs at least 512MB"), and 240-MP needs KMS. This is experimental: copy the overlay under another name, which the firmware does load, and keep the CMA pool at 64 MB:
+
+    ```bash
+    sudo cp /boot/firmware/overlays/vc4-kms-v3d.dtbo /boot/firmware/overlays/lowmem-vc4-kms.dtbo
+    ```
+
+    then use `dtoverlay=lowmem-vc4-kms,cma-64,composite` in the `[pi1]` section.
+
 ### Post Install
 
 **Modules**
