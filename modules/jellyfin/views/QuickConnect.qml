@@ -163,7 +163,7 @@ FocusScope {
                 font.family: root.globalFont
                 font.pixelSize: root.sh * 0.0333333 //16
                 SequentialAnimation on opacity {
-                    running: waiting
+                    running: !approved && !failed
                     loops: Animation.Infinite
                     NumberAnimation { to: 0.2; duration: 600 }
                     NumberAnimation { to: 1.0; duration: 600 }
