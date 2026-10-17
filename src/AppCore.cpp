@@ -10,6 +10,30 @@
 #include <QNetworkInterface>
 #include <QQmlContext>
 
+bool AppCore::lowMemory() const {
+    static const bool low = [] {
+        const QByteArray env = qgetenv("MP240_LOW_MEMORY");
+        if (!env.isEmpty())
+            return env != "0";
+#ifdef Q_OS_LINUX
+        QFile f(QStringLiteral("/proc/meminfo"));
+        if (f.open(QIODevice::ReadOnly)) {
+            // First line: "MemTotal:        177772 kB"
+            const QList<QByteArray> parts = f.readLine().simplified().split(' ');
+            if (parts.size() >= 2 && parts[0] == "MemTotal:")
+                return parts[1].toLongLong() < 512 * 1024;
+        }
+#endif
+        return false;
+    }();
+    static const bool logged = [] {
+        qInfo("[AppCore] low-memory mode: %s", low ? "on" : "off");
+        return true;
+    }();
+    Q_UNUSED(logged);
+    return low;
+}
+
 AppCore::AppCore(const QString &appRoot, const QString &dataRoot, QObject *parent)
     : QObject(parent), m_appRoot(appRoot), m_dataRoot(dataRoot)
 {

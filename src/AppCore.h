@@ -20,10 +20,17 @@ struct ModuleEntry {
 class AppCore : public QObject {
     Q_OBJECT
     Q_PROPERTY(QString appVersion READ appVersion CONSTANT)
+    Q_PROPERTY(bool lowMemory READ lowMemory CONSTANT)
 public:
     explicit AppCore(const QString &appRoot, const QString &dataRoot, QObject *parent = nullptr);
 
     QString appVersion() const { return QCoreApplication::applicationVersion(); }
+
+    // True on boards with less than 512 MB of RAM (Pi 1, Zero): the app then skips the
+    // ~6 MB Unifont fallback font and caps mpv's network read-ahead, which otherwise
+    // buffers up to 150 MB and pushes the UI into swap mid-stream. MP240_LOW_MEMORY=1|0
+    // forces it on or off.
+    bool lowMemory() const;
 
     // True when launched by the autostart systemd service (which injects MP240_AUTOSTART=1).
     // Gates the quit overlay's "Reboot" / "Exit to Terminal" options, which only make sense on a

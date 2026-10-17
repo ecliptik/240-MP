@@ -166,8 +166,11 @@ Window {
     // loading it here just registers it with Qt's fontconfig-backed font
     // database; Qt's own missing-glyph fallback then picks it up for every
     // existing font.family: root.globalFont binding with no further changes.
+    // Skipped on low-memory boards (appCore.lowMemory, < 512 MB): Qt holds the whole
+    // 5 MB font in RAM, about 6 MB of heap on a Pi 1 that only has ~190 MB in total.
     FontLoader {
-        id: unifontLoader; source: "assets/fonts/unifont.otf"
+        id: unifontLoader
+        source: appCore && appCore.lowMemory ? "" : "assets/fonts/unifont.otf"
     }
     property string globalFont: font.name;
 

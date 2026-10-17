@@ -313,6 +313,13 @@ void MpvController::loadAndPlay(const QString &url, float startSeconds,
     if (QUrl(url).host().endsWith(QStringLiteral(".plex.direct")))
         args << QStringLiteral("--tls-verify=no");
 
+    // Low-memory boards: mpv's network read-ahead defaults to 150 MiB, more than a
+    // Pi 1 has free, so a stream would push the app into swap and stall playback.
+    // 16 MiB is about a minute of a 2 Mbps (480p) stream, plenty on a LAN.
+    if (m_appCore && m_appCore->lowMemory())
+        args << QStringLiteral("--demuxer-max-bytes=16MiB")
+             << QStringLiteral("--demuxer-max-back-bytes=4MiB");
+
     // Auto Crop: start with panscan=1 unless the current decode path can't crop.
     // The Pi3 overlay (smooth) path blanks video under panscan, so suppress there —
     // matching the 1080p Playback trade-off. The OSC CROP button still toggles live.
