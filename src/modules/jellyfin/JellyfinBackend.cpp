@@ -1041,6 +1041,23 @@ void JellyfinBackend::get_playback_url(const QString &itemId, const QString &med
     tp["Protocol"]    = QStringLiteral("hls");
     transcodingProfiles.append(tp);
     profile["TranscodingProfiles"] = transcodingProfiles;
+    // With a quality cap, say so in the profile too. The MaxHeight added to the
+    // TranscodingUrl later only reaches a real encode: an H.264 source under the
+    // bitrate cap is otherwise stream-copied into the HLS output at full size
+    // (a 1280x534 film reached a 480p Pi 1 that way and stalled mpv's software
+    // scaler). With the condition the server copies only video that already fits.
+    if (maxHeight > 0) {
+        QJsonObject heightCap;
+        heightCap["Condition"]  = QStringLiteral("LessThanEqual");
+        heightCap["Property"]   = QStringLiteral("Height");
+        heightCap["Value"]      = QString::number(maxHeight);
+        heightCap["IsRequired"] = true;
+        QJsonObject codecProfile;
+        codecProfile["Type"]       = QStringLiteral("Video");
+        codecProfile["Codec"]      = QStringLiteral("h264");
+        codecProfile["Conditions"] = QJsonArray{ heightCap };
+        profile["CodecProfiles"]   = QJsonArray{ codecProfile };
+    }
     QJsonArray subtitleProfiles;
     if (directPlay) {
         // Direct play serves the original file whole and mpv renders embedded
