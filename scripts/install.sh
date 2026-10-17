@@ -208,7 +208,8 @@ else
             n=$(basename "$d"); KMS_CARD="${n%%-*}"; break
         done
     fi
-    if [ -n "$KMS_CARD" ] && [ -e "/dev/dri/$KMS_CARD" ]; then
+    # A KMS config set by the user (e.g. one that pins an output's mode) wins.
+    if [ -z "${QT_QPA_EGLFS_KMS_CONFIG:-}" ] && [ -n "$KMS_CARD" ] && [ -e "/dev/dri/$KMS_CARD" ]; then
         KMS_CONF="${XDG_RUNTIME_DIR:-/tmp}/240mp-kms.json"
         printf '{ "device": "/dev/dri/%s" }\n' "$KMS_CARD" > "$KMS_CONF"
         export QT_QPA_EGLFS_KMS_CONFIG="$KMS_CONF"
