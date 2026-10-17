@@ -316,9 +316,12 @@ void MpvController::loadAndPlay(const QString &url, float startSeconds,
     // Low-memory boards: mpv's network read-ahead defaults to 150 MiB, more than a
     // Pi 1 has free, so a stream would push the app into swap and stall playback.
     // 16 MiB is about a minute of a 2 Mbps (480p) stream, plenty on a LAN.
+    // --quiet drops mpv's per-frame status line: the app forwards mpv's output to
+    // its log, and on a Pi 1 that is several journal writes a second for nothing.
     if (m_appCore && m_appCore->lowMemory())
         args << QStringLiteral("--demuxer-max-bytes=16MiB")
-             << QStringLiteral("--demuxer-max-back-bytes=4MiB");
+             << QStringLiteral("--demuxer-max-back-bytes=4MiB")
+             << QStringLiteral("--quiet");
 
     // Auto Crop: start with panscan=1 unless the current decode path can't crop.
     // The Pi3 overlay (smooth) path blanks video under panscan, so suppress there —
