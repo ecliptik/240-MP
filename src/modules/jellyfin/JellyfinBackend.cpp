@@ -660,10 +660,17 @@ void JellyfinBackend::load_items(const QString &parentId, const QString &include
     QUrlQuery q;
     q.addQueryItem("parentId", parentId);
     q.addQueryItem("recursive", "true");
-    // Browse rows only need title/year/overview/played state. Skip the heavy
-    // per-item MediaSources/MediaStreams here (now that the list is unbounded) —
-    // Item.qml re-fetches full detail via load_item_detail when an item is opened.
-    q.addQueryItem("fields", "Overview,Genres,UserData,SortName");
+    // Browse rows only need title/sort title/year/type. Skip everything else the
+    // server would add by default: image tags and blurhashes, genres, user data and
+    // per-item MediaSources/MediaStreams. Item.qml re-fetches full detail via
+    // load_item_detail when an item is opened; ItemShow.qml uses the list item's
+    // overview and resume point, so series lists keep those two. On a 1,749-movie
+    // library this is 0.9 MB instead of 3.1 MB to parse and hand to QML, which on
+    // a Pi 1 (no QML JIT on ARMv6) is the difference between seconds and a minute.
+    const bool series = includeTypes.contains(QLatin1String("Series"));
+    q.addQueryItem("fields", series ? "Overview,SortName" : "SortName");
+    q.addQueryItem("enableImages", "false");
+    q.addQueryItem("enableUserData", series ? "true" : "false");
     if (!includeTypes.isEmpty())
         q.addQueryItem("includeItemTypes", includeTypes);
     if (!sortBy.isEmpty()) {
