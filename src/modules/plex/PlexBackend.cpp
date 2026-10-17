@@ -2719,6 +2719,11 @@ void PlexBackend::load_live_channels() {
                     if (id.isEmpty()) continue;
                     QString number = c["vcn"].toString();
                     QString name   = c["title"].toString(c["callSign"].toString());
+                    // XMLTV lineups (ErsatzTV, Threadfin, ...) often title a channel
+                    // "<number> <name>"; drop the repeated number so the list and the
+                    // tuning banner don't read "28  28 CYBERPUNK".
+                    if (!number.isEmpty() && name.startsWith(number + QLatin1Char(' ')))
+                        name = name.mid(number.size() + 1).trimmed();
                     channels.append(QVariantMap{
                         {"channelId", id},
                         {"number",    number},
