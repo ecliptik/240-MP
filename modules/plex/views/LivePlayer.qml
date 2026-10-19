@@ -20,6 +20,11 @@ FocusScope {
     property var    channels:  navParams.channels || []
     property int    chIndex:   navParams.index !== undefined ? navParams.index : -1
     property bool   switching: false
+    // Plex module setting live_stream_url, e.g. "http://tuner:8409/iptv/channel/{number}.ts": play the channel
+    // straight from the tuner that feeds Plex's DVR (an HDHomeRun-style source such as ErsatzTV) instead of
+    // having Plex tune it and transcode/remux it into HLS. Plex still supplies the channel list. Unset = via Plex.
+    property string directTemplate: (appCore.get_setting("com.240mp.plex", "live_stream_url") || "").toString()
+    readonly property bool direct: directTemplate !== "" && channel.number !== undefined && channel.number !== ""
 
     property string sessionId:     ""
     property string streamUrl:     ""
@@ -42,6 +47,11 @@ FocusScope {
         if (!channel.channelId) { goBack(); return }
         playbackStarted = false
         sessionId = newSessionId()
+        if (direct) {
+            streamUrl = directTemplate.replace("{number}", String(channel.number))
+            mpvController.loadAndPlay(streamUrl, 0, 0, -1, [], [], false, -1, 0.0, "")
+            return
+        }
         plexBackend.tune_channel(channel.channelId, sessionId)
     }
 
@@ -52,14 +62,14 @@ FocusScope {
         if (switching || exiting || !playbackStarted || channels.length < 2 || chIndex < 0) return
         chIndex = (chIndex + step + channels.length) % channels.length
         switching = true
-        plexBackend.stop_live_session(sessionId)
+        if (!direct) plexBackend.stop_live_session(sessionId)
         mpvController.stop()
     }
 
     function teardown() {
         if (exiting) return
         exiting = true
-        plexBackend.stop_live_session(sessionId)
+        if (!direct) plexBackend.stop_live_session(sessionId)
         mpvController.stop()
     }
 
@@ -148,7 +158,7 @@ FocusScope {
     Timer {
         interval: 8000
         repeat:   true
-        running:  true
+        running:  !livePlayerRoot.direct   // a direct stream has no Plex grab to keep alive
         onTriggered: plexBackend.update_live_timeline("playing")
     }
 
