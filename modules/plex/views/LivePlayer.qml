@@ -47,6 +47,7 @@ FocusScope {
         if (!channel.channelId) { goBack(); return }
         playbackStarted = false
         sessionId = newSessionId()
+        console.log("[LivePlayer] tune " + (channel.number || "?") + (direct ? " (direct)" : " (via Plex)"))
         if (direct) {
             streamUrl = directTemplate.replace("{number}", String(channel.number))
             mpvController.loadAndPlay(streamUrl, 0, 0, -1, [], [], false, -1, 0.0, "")
@@ -55,15 +56,35 @@ FocusScope {
         plexBackend.tune_channel(channel.channelId, sessionId)
     }
 
-    // Step to the next/previous channel in place: stop this one, and retune once mpv
-    // reports it has ended. Only while something is playing, so a tune still in
-    // flight can't answer for the wrong channel.
+    // Step to the next/previous channel in place: stop this one and tune the new one once mpv reports it has
+    // ended. Direct streams take every press, even mid-tune: presses add up, the TUNING screen shows the target,
+    // and only the last channel is tuned. Through Plex one tune runs at a time (a Plex tune in flight can't be
+    // cancelled), so presses before the picture are ignored there. A remote's repeated code (a second press
+    // within 300 ms) counts once.
+    property double lastChannelKey: 0
     function switchChannel(step) {
-        if (switching || exiting || !playbackStarted || channels.length < 2 || chIndex < 0) return
+        if (exiting || channels.length < 2 || chIndex < 0) return
+        var now = Date.now()
+        if (now - lastChannelKey < 300) return
+        lastChannelKey = now
+        if (!direct && (switching || !playbackStarted)) return
         chIndex = (chIndex + step + channels.length) % channels.length
+        channel = channels[chIndex]
+        if (switching) return              // already stopping; the retune uses the latest channel
         switching = true
         if (!direct) plexBackend.stop_live_session(sessionId)
         mpvController.stop()
+        if (direct) switchFallback.restart()
+    }
+
+    // If mpv wasn't running (still starting, or failed), no playbackEnded arrives: tune anyway.
+    Timer {
+        id: switchFallback
+        interval: 2500
+        onTriggered: if (livePlayerRoot.switching) {
+            livePlayerRoot.switching = false
+            livePlayerRoot.tune()
+        }
     }
 
     function teardown() {
@@ -83,10 +104,10 @@ FocusScope {
             mpvController.sendKey("ESC")
             event.accepted = true
         } else if (event.key === Qt.Key_PageUp || event.key === Qt.Key_ChannelUp) {
-            switchChannel(1)
+            if (!event.isAutoRepeat) switchChannel(1)
             event.accepted = true
         } else if (event.key === Qt.Key_PageDown || event.key === Qt.Key_ChannelDown) {
-            switchChannel(-1)
+            if (!event.isAutoRepeat) switchChannel(-1)
             event.accepted = true
         } else if (event.key === Qt.Key_Backspace) {
             mpvController.sendKey("BS")
@@ -140,7 +161,7 @@ FocusScope {
             // A channel switch: tune the new channel instead of leaving.
             if (livePlayerRoot.switching) {
                 livePlayerRoot.switching = false
-                livePlayerRoot.channel = livePlayerRoot.channels[livePlayerRoot.chIndex]
+                switchFallback.stop()
                 livePlayerRoot.tune()
                 return
             }
