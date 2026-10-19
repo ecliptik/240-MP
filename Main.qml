@@ -247,6 +247,14 @@ Window {
         Keys.onPressed: (event) => {
             if ((event.modifiers & Qt.ControlModifier) && event.key === Qt.Key_Q) {
                 Qt.quit()
+            } else if (event.key === Qt.Key_PageUp || event.key === Qt.Key_ChannelUp) {
+                // A remote's Channel Up/Down that the view didn't handle (only Live TV
+                // does) moves like Up/Down, so they work in every list.
+                inputManager.pressKey(Qt.Key_Up)
+                event.accepted = true
+            } else if (event.key === Qt.Key_PageDown || event.key === Qt.Key_ChannelDown) {
+                inputManager.pressKey(Qt.Key_Down)
+                event.accepted = true
             }
         }
 

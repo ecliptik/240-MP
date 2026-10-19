@@ -713,6 +713,11 @@ void InputManager::postKey(int qtKey, QEvent::Type type, bool autoRepeat) {
                       kSyntheticScanCode, 0, 0, QString(), autoRepeat));
 }
 
+void InputManager::pressKey(int qtKey) {
+    postKey(qtKey, QEvent::KeyPress, false);
+    postKey(qtKey, QEvent::KeyRelease, false);
+}
+
 int InputManager::qtKeyForAction(Action a) {
     switch (a) {
     case Action::Up:        return Qt::Key_Up;

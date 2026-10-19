@@ -56,6 +56,9 @@ public:
     // default key). Synthesized gamepad key events keep flowing to QML so a
     // pad's Back button can still cancel the overlay.
     Q_INVOKABLE void setRemapCapture(bool active);
+    // Press and release a Qt key, delivered like a gamepad action (to the window's focus item). Main.qml
+    // uses it to turn an unhandled Channel Up/Down (Page Up/Down) into Up/Down outside Live TV.
+    Q_INVOKABLE void pressKey(int qtKey);
 
 signals:
     void gamepadConnectedChanged();
