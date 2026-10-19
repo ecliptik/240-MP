@@ -111,15 +111,15 @@ FocusScope {
                 channelsRoot.goBack()
                 event.accepted = true
             } else if (event.key === Qt.Key_PageUp || event.key === Qt.Key_ChannelUp) {
-                // Channel up/down on a remote moves through the list like Down/Up
-                // (higher channel numbers are further down).
+                // Channel up/down on a remote move the highlight up/down the list, like the
+                // arrows (in the player they step to the next/previous channel number).
                 if (count === 0) return
-                currentIndex = (currentIndex + 1) % count
+                currentIndex = (currentIndex - 1 + count) % count
                 channelList.positionViewAtIndex(currentIndex, ListView.Contain)
                 event.accepted = true
             } else if (event.key === Qt.Key_PageDown || event.key === Qt.Key_ChannelDown) {
                 if (count === 0) return
-                currentIndex = (currentIndex - 1 + count) % count
+                currentIndex = (currentIndex + 1) % count
                 channelList.positionViewAtIndex(currentIndex, ListView.Contain)
                 event.accepted = true
             }
