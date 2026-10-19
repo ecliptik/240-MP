@@ -50,7 +50,9 @@ FocusScope {
         console.log("[LivePlayer] tune " + (channel.number || "?") + (direct ? " (direct)" : " (via Plex)"))
         if (direct) {
             streamUrl = directTemplate.replace("{number}", String(channel.number))
-            mpvController.loadAndPlay(streamUrl, 0, 0, -1, [], [], false, -1, 0.0, "")
+            // mpv takes over the display as it starts; give Qt a moment to draw the TUNING screen first, so
+            // Enter and Channel Up/Down show at once that they were pressed (through Plex the tune wait shows it).
+            directStart.restart()
             return
         }
         plexBackend.tune_channel(channel.channelId, sessionId)
@@ -62,6 +64,12 @@ FocusScope {
     // cancelled), so presses before the picture are ignored there. A remote's repeated code (a second press
     // within 300 ms) counts once.
     property double lastChannelKey: 0
+    // Toggled when the display comes back from mpv: forces Qt to redraw at once, so the frame it hands back
+    // (the previous channel's TUNING screen) is replaced by the new one immediately.
+    property bool repaintTick: false
+    function startMpv(url, token) {
+        mpvController.loadAndPlay(url, 0, 0, -1, [], [], false, -1, 0.0, token)
+    }
     function switchChannel(step) {
         if (exiting || channels.length < 2 || chIndex < 0) return
         var now = Date.now()
@@ -70,11 +78,18 @@ FocusScope {
         if (!direct && (switching || !playbackStarted)) return
         chIndex = (chIndex + step + channels.length) % channels.length
         channel = channels[chIndex]
+        if (direct && directStart.running) { tune(); return }   // mpv not started yet: retarget the pending start
         if (switching) return              // already stopping; the retune uses the latest channel
         switching = true
         if (!direct) plexBackend.stop_live_session(sessionId)
         mpvController.stop()
         if (direct) switchFallback.restart()
+    }
+
+    Timer {
+        id: directStart
+        interval: 150
+        onTriggered: livePlayerRoot.startMpv(livePlayerRoot.streamUrl, "")
     }
 
     // If mpv wasn't running (still starting, or failed), no playbackEnded arrives: tune anyway.
@@ -102,6 +117,10 @@ FocusScope {
         if (event.key === Qt.Key_Escape || event.key === Qt.Key_Back) {
             // Quit mpv; onPlaybackEnded drives the teardown + goBack.
             mpvController.sendKey("ESC")
+            event.accepted = true
+        } else if (event.key === Qt.Key_I || event.key === Qt.Key_Info) {
+            // Info (a remote's Display button): what's on now, from the guide.
+            if (!event.isAutoRepeat && channel.number) plexBackend.fetch_now_playing(String(channel.number))
             event.accepted = true
         } else if (event.key === Qt.Key_PageUp || event.key === Qt.Key_ChannelUp) {
             if (!event.isAutoRepeat) switchChannel(1)
@@ -136,11 +155,20 @@ FocusScope {
     Connections {
         target: plexBackend
 
+        function onNowPlayingReady(number, title, subTitle, start, stop) {
+            if (String(number) !== String(livePlayerRoot.channel.number) || !livePlayerRoot.playbackStarted) return
+            var head = livePlayerRoot.channel.number + "  " + (livePlayerRoot.channel.title || "")
+            var body = title ? title + (subTitle ? " - " + subTitle : "") : ""
+            var when = (title && start && stop)
+                     ? Qt.formatTime(start, "h:mm AP") + " - " + Qt.formatTime(stop, "h:mm AP") : ""
+            mpvController.showText([head, body, when].filter(function(l) { return l !== "" }).join("\n"), 5000)
+        }
+
         function onStreamUrlReady(url, plexToken) {
             livePlayerRoot.streamUrl = url
             livePlayerRoot.plexToken = plexToken
             // Live always transcodes (HLS): no separate audio/sub tracks to pick.
-            mpvController.loadAndPlay(url, 0, 0, -1, [], [], false, -1, 0.0, plexToken)
+            livePlayerRoot.startMpv(url, plexToken)
         }
 
         function onErrorOccurred(msg) {
@@ -154,7 +182,11 @@ FocusScope {
         target: mpvController
 
         function onPositionChanged(ms) {
-            if (ms > 0) livePlayerRoot.playbackStarted = true
+            if (ms > 0 && !livePlayerRoot.playbackStarted) {
+                livePlayerRoot.playbackStarted = true
+                var c = livePlayerRoot.channel
+                mpvController.showText((c.number ? c.number + "  " : "") + (c.title || ""), 3000)
+            }
         }
 
         function onPlaybackEnded(finalPositionMs, finalDurationMs, reason) {
@@ -162,6 +194,7 @@ FocusScope {
             if (livePlayerRoot.switching) {
                 livePlayerRoot.switching = false
                 switchFallback.stop()
+                livePlayerRoot.repaintTick = !livePlayerRoot.repaintTick
                 livePlayerRoot.tune()
                 return
             }
@@ -189,12 +222,12 @@ FocusScope {
     // Player.qml).
     Rectangle {
         anchors.fill: parent
-        color: "black"
+        color: livePlayerRoot.repaintTick ? "#000000" : "#010101"   // both black; the change forces a redraw
 
         Text {
-            text: "TUNING " + ((livePlayerRoot.channel.number
-                                 ? livePlayerRoot.channel.number + "  " : "")
-                               + (livePlayerRoot.channel.title || "")) + "..."
+            // Always plain: mpv inherits this frame and the display hands it back at the next change, so a
+            // channel name here would flash stale; the channel shows as a banner over the picture instead.
+            text: "TUNING..."
             color: "white"
             font.family: root.globalFont
             font.capitalization: Font.AllUppercase

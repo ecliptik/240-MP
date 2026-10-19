@@ -46,6 +46,8 @@ public:
     Q_INVOKABLE void stop();
     Q_INVOKABLE void seekTo(int positionMs);
     Q_INVOKABLE void sendKey(const QString &key);
+    // On-screen text over the video for durationMs (shown at OSD level 0, so it appears despite --osd-level=0).
+    Q_INVOKABLE void showText(const QString &text, int durationMs = 5000);
     Q_INVOKABLE void showOsdSkipPrompt();
     Q_INVOKABLE void clearOsdPrompt();
 

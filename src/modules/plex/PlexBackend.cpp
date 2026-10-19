@@ -14,6 +14,8 @@
 #include <QVariantMap>
 #include <QDebug>
 #include <QDateTime>
+#include <QXmlStreamReader>
+#include <QTimeZone>
 #include <QRandomGenerator>
 
 #include <openssl/evp.h>
@@ -2926,6 +2928,66 @@ void PlexBackend::getVideoQualities() {
         QVariantMap{{"id","2000"}, {"label","2 Mbps (480p)"}},
     };
     emit dynamicOptionsReady("video_quality", options);
+}
+
+// XMLTV time: "20261019132339 -0700".
+static QDateTime xmltvTime(const QString &t) {
+    QDateTime dt = QDateTime::fromString(t.left(14), QStringLiteral("yyyyMMddHHmmss"));
+    const QString off = t.mid(15).trimmed();
+    if (off.size() == 5) {
+        int secs = (off.mid(1, 2).toInt() * 60 + off.mid(3, 2).toInt()) * 60;
+        dt.setTimeZone(QTimeZone::fromSecondsAheadOfUtc(off.startsWith('-') ? -secs : secs));
+    }
+    return dt;
+}
+
+void PlexBackend::fetch_now_playing(const QString &number) {
+    QJsonObject plex = loadConfig()["modules"].toObject()["com.240mp.plex"].toObject();
+    QString guide = plex["live_guide_url"].toString();
+    if (guide.isEmpty()) {
+        QString tmpl = plex["live_stream_url"].toString();
+        if (!tmpl.isEmpty()) {
+            QUrl u(QString(tmpl).replace(QStringLiteral("{number}"), QStringLiteral("0")));
+            u.setPath(QStringLiteral("/iptv/xmltv.xml"));
+            u.setQuery(QString());
+            guide = u.toString();
+        }
+    }
+    if (guide.isEmpty()) { emit nowPlayingReady(number, QString(), QString(), {}, {}); return; }
+    auto *reply = m_nam->get(QNetworkRequest(QUrl(guide)));
+    connect(reply, &QNetworkReply::finished, this, [this, reply, number]() {
+        reply->deleteLater();
+        QXmlStreamReader x(reply->readAll());
+        QSet<QString> ids;                      // the channel's guide ids (a display-name equal to its number)
+        QString title, sub;
+        QDateTime start, stop;
+        const QDateTime now = QDateTime::currentDateTime();
+        while (!x.atEnd() && title.isEmpty()) {
+            if (!x.readNextStartElement()) continue;
+            if (x.name() == QLatin1String("channel")) {
+                const QString id = x.attributes().value("id").toString();
+                while (x.readNextStartElement()) {
+                    if (x.name() == QLatin1String("display-name") && x.readElementText().trimmed() == number)
+                        ids.insert(id);
+                    else
+                        x.skipCurrentElement();
+                }
+            } else if (x.name() == QLatin1String("programme")) {
+                const auto a = x.attributes();
+                if (!ids.contains(a.value("channel").toString())) { x.skipCurrentElement(); continue; }
+                const QDateTime s = xmltvTime(a.value("start").toString()), e = xmltvTime(a.value("stop").toString());
+                if (!(s <= now && now < e)) { x.skipCurrentElement(); continue; }
+                QString t, st;
+                while (x.readNextStartElement()) {
+                    if (x.name() == QLatin1String("title")) t = x.readElementText();
+                    else if (x.name() == QLatin1String("sub-title")) st = x.readElementText();
+                    else x.skipCurrentElement();
+                }
+                title = t; sub = st; start = s; stop = e;
+            }
+        }
+        emit nowPlayingReady(number, title, sub, start, stop);
+    });
 }
 
 void PlexBackend::getLiveVideoQualities() {

@@ -72,6 +72,10 @@ FocusScope {
                 reportStopped(0, 0)
                 goBack()
                 event.accepted = true
+            } else if (event.key === Qt.Key_I || event.key === Qt.Key_Info) {
+                // Info (a remote's Display button): the title over the video
+                if (!event.isAutoRepeat && itemTitle) mpvController.showText(itemTitle, 4000)
+                event.accepted = true
             } else if (event.key === Qt.Key_Up) {
                 choiceIndex = 0
                 event.accepted = true
@@ -96,6 +100,10 @@ FocusScope {
                 event.accepted = true
             } else if (event.key === Qt.Key_Space) {
                 mpvController.sendKey("SPACE")
+                event.accepted = true
+            } else if (event.key === Qt.Key_I || event.key === Qt.Key_Info) {
+                // Info (a remote's Display button): the title over the video
+                if (!event.isAutoRepeat && itemTitle) mpvController.showText(itemTitle, 4000)
                 event.accepted = true
             } else if (event.key === Qt.Key_Up) {
                 mpvController.sendKey("UP")

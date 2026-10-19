@@ -117,6 +117,9 @@ public:
     // update_live_timeline keeps that tuner alive (state "playing") or releases it
     // (state "stopped"). The grabbed media key is remembered between calls.
     Q_INVOKABLE void load_live_channels();
+    // What's airing now on a live channel, from the tuner's XMLTV guide (live_guide_url, or /iptv/xmltv.xml on
+    // live_stream_url's host); answers with nowPlayingReady (empty title when unknown).
+    Q_INVOKABLE void fetch_now_playing(const QString &number);
     Q_INVOKABLE void tune_channel(const QString &channelId, const QString &sessionId);
     Q_INVOKABLE void update_live_timeline(const QString &state);
     // Stops the live transcode for sessionId and forgets the tuned key, so the
@@ -169,6 +172,8 @@ signals:
     void cardError(const QString &message);
 
     void liveChannelsLoaded(const QVariant &channels);
+    void nowPlayingReady(const QString &number, const QString &title, const QString &subTitle,
+                         const QDateTime &start, const QDateTime &stop);
 
     void dynamicOptionsReady(const QString &key, const QVariant &options);
 

@@ -491,6 +491,10 @@ void MpvController::seekTo(int positionMs) {
     sendCommand({"seek", positionMs / 1000.0, "absolute+exact"});
 }
 
+void MpvController::showText(const QString &text, int durationMs) {
+    sendCommand({"show-text", text, durationMs, 0});
+}
+
 void MpvController::sendKey(const QString &key) {
     sendCommand({"keypress", key});
 }
