@@ -3,9 +3,9 @@ import QtQuick
 // Live TV player. A slimmed sibling of Player.qml — live channels have no
 // resume/duration/seek/autoplay-next semantics, so this drops all of that. It
 // tunes the selected channel, hands the HLS stream to mpv, and keeps the tuner
-// alive with a timeline ping. To watch a different channel the user exits back to
-// the channel list and picks another (in-player channel switching is not wired up
-// yet — pending a maintainer discussion on how to route keys past mpv).
+// alive with a timeline ping. Channel up/down (Page Up/Down, or a remote's
+// Channel keys) steps through the lineup in place: the Qt app owns the keyboard
+// and relays the rest to mpv, so these two never reach mpv.
 FocusScope {
     id: livePlayerRoot
 
@@ -16,6 +16,10 @@ FocusScope {
 
     // The channel to watch: { channelId, number, title }.
     property var    channel:   navParams.channel || ({})
+    // The lineup and this channel's place in it, for channel up/down.
+    property var    channels:  navParams.channels || []
+    property int    chIndex:   navParams.index !== undefined ? navParams.index : -1
+    property bool   switching: false
 
     property string sessionId:     ""
     property string streamUrl:     ""
@@ -41,6 +45,17 @@ FocusScope {
         plexBackend.tune_channel(channel.channelId, sessionId)
     }
 
+    // Step to the next/previous channel in place: stop this one, and retune once mpv
+    // reports it has ended. Only while something is playing, so a tune still in
+    // flight can't answer for the wrong channel.
+    function switchChannel(step) {
+        if (switching || exiting || !playbackStarted || channels.length < 2 || chIndex < 0) return
+        chIndex = (chIndex + step + channels.length) % channels.length
+        switching = true
+        plexBackend.stop_live_session(sessionId)
+        mpvController.stop()
+    }
+
     function teardown() {
         if (exiting) return
         exiting = true
@@ -56,6 +71,12 @@ FocusScope {
         if (event.key === Qt.Key_Escape || event.key === Qt.Key_Back) {
             // Quit mpv; onPlaybackEnded drives the teardown + goBack.
             mpvController.sendKey("ESC")
+            event.accepted = true
+        } else if (event.key === Qt.Key_PageUp || event.key === Qt.Key_ChannelUp) {
+            switchChannel(1)
+            event.accepted = true
+        } else if (event.key === Qt.Key_PageDown || event.key === Qt.Key_ChannelDown) {
+            switchChannel(-1)
             event.accepted = true
         } else if (event.key === Qt.Key_Backspace) {
             mpvController.sendKey("BS")
@@ -106,8 +127,15 @@ FocusScope {
         }
 
         function onPlaybackEnded(finalPositionMs, finalDurationMs, reason) {
-            // Any end (user quit, stream failure, or rare eof) tears down the tuner
-            // and returns to the channel list.
+            // A channel switch: tune the new channel instead of leaving.
+            if (livePlayerRoot.switching) {
+                livePlayerRoot.switching = false
+                livePlayerRoot.channel = livePlayerRoot.channels[livePlayerRoot.chIndex]
+                livePlayerRoot.tune()
+                return
+            }
+            // Any other end (user quit, stream failure, or rare eof) tears down the
+            // tuner and returns to the channel list.
             teardown()
             goBack()
         }

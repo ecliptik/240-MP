@@ -128,6 +128,7 @@ public:
     Q_INVOKABLE void getServers();
     Q_INVOKABLE void getLibraries();
     Q_INVOKABLE void getVideoQualities();
+    Q_INVOKABLE void getLiveVideoQualities();
     Q_INVOKABLE void get_resume_playback_options();
     Q_INVOKABLE void applyCurrentUserSetting();
     Q_INVOKABLE void applyCurrentServerSetting();
@@ -198,6 +199,7 @@ private:
     QString accountToken() const;
     QString userToken() const;
     QString videoQuality() const;
+    QString liveVideoQuality() const;
     QString clientId() const;   // UUID, stored in plex_auth.json
 
     // Item formatting helpers

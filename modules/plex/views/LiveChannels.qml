@@ -98,14 +98,29 @@ FocusScope {
 
         Keys.onReturnPressed: {
             if (channels.length === 0) return
+            // The whole lineup goes along so the player can step channels in place.
             channelsRoot.navigateTo("LivePlayer.qml", {
-                channel: channels[currentIndex]
+                channel: channels[currentIndex],
+                channels: channels,
+                index: currentIndex
             }, { currentIndex: channelList.currentIndex })
         }
 
         Keys.onPressed: function(event) {
             if (event.key === Qt.Key_Escape || event.key === Qt.Key_Backspace || event.key === Qt.Key_Back) {
                 channelsRoot.goBack()
+                event.accepted = true
+            } else if (event.key === Qt.Key_PageUp || event.key === Qt.Key_ChannelUp) {
+                // Channel up/down on a remote moves through the list like Down/Up
+                // (higher channel numbers are further down).
+                if (count === 0) return
+                currentIndex = (currentIndex + 1) % count
+                channelList.positionViewAtIndex(currentIndex, ListView.Contain)
+                event.accepted = true
+            } else if (event.key === Qt.Key_PageDown || event.key === Qt.Key_ChannelDown) {
+                if (count === 0) return
+                currentIndex = (currentIndex - 1 + count) % count
+                channelList.positionViewAtIndex(currentIndex, ListView.Contain)
                 event.accepted = true
             }
         }

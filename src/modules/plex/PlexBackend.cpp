@@ -786,6 +786,16 @@ QString PlexBackend::videoQuality() const {
     return cfg["modules"].toObject()["com.240mp.plex"].toObject()["video_quality"].toString("auto");
 }
 
+// Live TV's own quality; unset follows Video Quality. "auto" (Direct Play) asks Plex to
+// direct-stream the tuner's stream (remux, no re-encode): much faster to start, for a
+// player that can decode the channel's video itself.
+QString PlexBackend::liveVideoQuality() const {
+    QJsonObject cfg = loadConfig();
+    QJsonObject plex = cfg["modules"].toObject()["com.240mp.plex"].toObject();
+    QString q = plex["live_video_quality"].toString();
+    return q.isEmpty() ? videoQuality() : q;
+}
+
 // ---------------------------------------------------------------------------
 // Item formatting
 // ---------------------------------------------------------------------------
@@ -2787,7 +2797,7 @@ void PlexBackend::tune_channel(const QString &channelId, const QString &sessionI
         // Start the HLS transcode against the tuned path. Reuses the universal
         // transcoder + master-m3u8 parse from request_transcode.
         QString uri = serverUrl(), token = serverToken();
-        QString quality = videoQuality();
+        QString quality = liveVideoQuality();
         QUrl startUrl(uri + "/video/:/transcode/universal/start.m3u8");
         QUrlQuery sq;
         sq.addQueryItem("hasMDE",       "1");
@@ -2796,8 +2806,9 @@ void PlexBackend::tune_channel(const QString &channelId, const QString &sessionI
         sq.addQueryItem("partIndex",    "0");
         sq.addQueryItem("protocol",     "hls");
         sq.addQueryItem("directPlay",   "0");
-        sq.addQueryItem("directStream", "0");
-        // Live always transcodes; cap bitrate when the user picked a fixed quality.
+        // A fixed quality transcodes to that bitrate; "auto" direct-streams (Plex
+        // remuxes the tuner's stream into HLS without re-encoding it).
+        sq.addQueryItem("directStream", quality == "auto" ? "1" : "0");
         if (quality != "auto") sq.addQueryItem("maxVideoBitrate", quality);
         sq.addQueryItem("subtitleSize", "100");
         sq.addQueryItem("audioBoost",   "100");
@@ -2915,6 +2926,16 @@ void PlexBackend::getVideoQualities() {
         QVariantMap{{"id","2000"}, {"label","2 Mbps (480p)"}},
     };
     emit dynamicOptionsReady("video_quality", options);
+}
+
+void PlexBackend::getLiveVideoQualities() {
+    QVariantList options = {
+        QVariantMap{{"id","auto"}, {"label","Direct Stream"}},
+        QVariantMap{{"id","8000"}, {"label","8 Mbps (1080p)"}},
+        QVariantMap{{"id","4000"}, {"label","4 Mbps (720p)"}},
+        QVariantMap{{"id","2000"}, {"label","2 Mbps (480p)"}},
+    };
+    emit dynamicOptionsReady("live_video_quality", options);
 }
 
 void PlexBackend::get_resume_playback_options() {

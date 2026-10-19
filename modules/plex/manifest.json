@@ -52,6 +52,14 @@
       "requires_auth": true
     },
     {
+      "key": "live_video_quality",
+      "label": "Live TV Quality",
+      "type": "list_single",
+      "options_source": "dynamic",
+      "options_slot": "getLiveVideoQualities",
+      "requires_auth": true
+    },
+    {
       "key": "resume_playback",
       "label": "Resume Playback",
       "type": "list_single",
